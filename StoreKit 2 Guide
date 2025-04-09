@@ -1,0 +1,140 @@
+
+StoreKit 2 Guide for Auto-Renewable Subscriptions (iOS 18+)
+===========================================================
+
+✅ Requirements
+---------------
+- Xcode 16+
+- iOS 18+
+- Swift 5.10+
+- Auto-renewable subscriptions configured in App Store Connect
+
+🧾 Define Product Identifiers
+-----------------------------
+enum SubscriptionProduct: String, CaseIterable {
+    case monthly = "com.yourapp.subscription.monthly"
+    case yearly = "com.yourapp.subscription.yearly"
+}
+
+📦 Fetch Products
+-----------------
+import StoreKit
+
+@MainActor
+class StoreManager: ObservableObject {
+    @Published var products: [Product] = []
+
+    func fetchProducts() async {
+        do {
+            let storeProducts = try await Product.products(for: SubscriptionProduct.allCases.map { $0.rawValue })
+            self.products = storeProducts
+        } catch {
+            print("⚠️ Failed to fetch products: \(error)")
+        }
+    }
+}
+
+💳 Purchase Product
+-------------------
+func purchase(_ product: Product) async {
+    do {
+        let result = try await product.purchase()
+        
+        switch result {
+        case .success(let verification):
+            switch verification {
+            case .verified(let transaction):
+                await transaction.finish()
+                print("✅ Purchase successful: \(transaction.productID)")
+            case .unverified(_, let error):
+                print("❌ Unverified transaction: \(error.localizedDescription)")
+            }
+        case .userCancelled:
+            print("🔙 Purchase cancelled by user")
+        case .pending:
+            print("⏳ Purchase pending")
+        @unknown default:
+            break
+        }
+    } catch {
+        print("❌ Purchase failed: \(error.localizedDescription)")
+    }
+}
+
+✅ Check Subscription Status
+----------------------------
+func isSubscribed(productID: String) async -> Bool {
+    for await result in Transaction.currentEntitlements {
+        if case .verified(let transaction) = result,
+           transaction.productID == productID,
+           transaction.revocationDate == nil,
+           !transaction.isUpgraded {
+            return true
+        }
+    }
+    return false
+}
+
+🧪 StoreKit Config for Testing
+------------------------------
+- Create a StoreKit Configuration File in Xcode
+- Add your products and attach the config in scheme settings
+
+🛎 Listen for Transaction Updates
+---------------------------------
+func startTransactionListener() {
+    Task.detached {
+        for await result in Transaction.updates {
+            if case .verified(let transaction) = result {
+                await transaction.finish()
+                print("🔁 Transaction update for \(transaction.productID)")
+            }
+        }
+    }
+}
+
+🧼 Restore Purchases
+--------------------
+func restorePurchases() async {
+    do {
+        try await AppStore.sync()
+        print("🔄 Restore requested")
+    } catch {
+        print("❌ Restore failed: \(error)")
+    }
+}
+
+🧑‍🏫 Best Practices
+-------------------
+- Always verify transactions using `.verified`
+- Use `Transaction.updates` to handle live updates
+- Check expiration and revocation dates
+- Manage UI using @Published states
+- Test using sandbox and real Apple IDs
+
+🧪 SwiftUI Sample UI
+---------------------
+struct StoreView: View {
+    @StateObject var store = StoreManager()
+
+    var body: some View {
+        List(store.products) { product in
+            VStack(alignment: .leading) {
+                Text(product.displayName)
+                Text(product.displayPrice)
+                Button("Subscribe") {
+                    Task {
+                        await store.purchase(product)
+                    }
+                }
+            }
+        }
+        .task {
+            await store.fetchProducts()
+        }
+    }
+}
+
+📚 Resources
+------------
+- Apple Sample Code: https://developer.apple.com/documentation/storekit/in-app_purchase
