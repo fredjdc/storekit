@@ -1,6 +1,6 @@
 # storekit
 
-# StoreKit 2 Implementation Considerations
+# StoreKit 2 Code
 
 @available(iOS 18.4, macOS 15.4, tvOS 18.4, watchOS 11.4, visionOS 2.4, *)
 public struct AdvancedCommerceProduct : Identifiable {
